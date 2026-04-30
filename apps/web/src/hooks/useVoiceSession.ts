@@ -46,7 +46,6 @@ export function useVoiceSession(sessionId: string) {
         case 'error':
           setError(message.message);
           break;
-        case 'session_started':
         case 'ai_audio': {
           const byteCharacters = atob(message.data);
           const byteNumbers = new Array(byteCharacters.length);

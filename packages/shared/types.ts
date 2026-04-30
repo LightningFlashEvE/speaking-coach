@@ -131,11 +131,11 @@ export interface RealtimeVoiceProvider {
     userLevel: string;
   }): Promise<void>;
 
-  sendAudio(data: Buffer, mimeType?: string): void;
+  sendAudio(data: Uint8Array): void;
 
   sendText?(text: string): void;
 
-  onAudio(callback: (audio: Buffer, mimeType: string) => void): void;
+  onAudio(callback: (audio: Uint8Array, mimeType: string) => void): void;
 
   onTranscript(
     callback: (message: {

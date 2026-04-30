@@ -31,7 +31,7 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
   private readonly logger = new Logger(AliyunBailianRealtimeProvider.name);
 
   private ws: WebSocket | null = null;
-  private audioCallback?: (audio: Buffer, mimeType: string) => void;
+  private audioCallback?: (audio: Uint8Array, mimeType: string) => void;
   private transcriptCallback?: (message: {
     role: 'user' | 'assistant';
     text: string;
@@ -266,13 +266,13 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
     });
   }
 
-  sendAudio(data: Buffer): void {
+  sendAudio(data: Uint8Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
     // Append audio
     this.sendJson(this.ws, {
       type: 'input_audio_buffer.append',
-      audio: data.toString('base64'),
+      audio: Buffer.from(data).toString('base64'),
     });
 
     // For manual mode, we also need to trigger commit and response manually after user stops speaking.
@@ -303,7 +303,7 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
     });
   }
 
-  onAudio(callback: (audio: Buffer, mimeType: string) => void): void {
+  onAudio(callback: (audio: Uint8Array, mimeType: string) => void): void {
     this.audioCallback = callback;
   }
 

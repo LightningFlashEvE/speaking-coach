@@ -191,7 +191,7 @@ export class VoiceSessionService implements OnModuleDestroy {
         provider.onAudio((audio, mimeType) => {
           this.send(session.ws, {
             type: 'ai_audio',
-            data: audio.toString('base64'),
+            data: Buffer.from(audio).toString('base64'),
             mimeType,
           });
         });
@@ -335,7 +335,7 @@ export class VoiceSessionService implements OnModuleDestroy {
     );
 
     if (session.realtimeProvider) {
-      session.realtimeProvider.sendAudio(decoded, mimeType);
+      session.realtimeProvider.sendAudio(decoded);
     } else {
       this.scheduleAudioIdleState(session);
     }
