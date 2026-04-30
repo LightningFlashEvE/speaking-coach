@@ -153,7 +153,7 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
         const event = this.parseEvent(data);
         const eventType = event.type ?? 'unknown';
         receivedEventTypes.push(eventType);
-        this.logger.log(`[aliyun_event] type=${eventType}`);
+        this.logger.debug(`[aliyun_event] type=${eventType}`);
 
         // Collect any text delta
         const delta = this.extractTextDelta(event);
@@ -330,6 +330,12 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
 
   private handleWsMessage(data: WebSocket.RawData) {
     const event = this.parseEvent(data);
+    const eventType = event.type ?? 'unknown';
+    
+    // Log all event types to help debug
+    if (eventType !== 'response.audio.delta' && eventType !== 'input_audio_buffer.append') {
+      this.logger.log(`[aliyun_event] type=${eventType}`);
+    }
 
     // Handle Audio Output
     if (
@@ -346,10 +352,9 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
       }
     }
 
-    // Handle Assistant Transcript
+    // Handle Assistant Transcript (prioritize audio_transcript for voice)
     if (
-      event.type === 'response.audio_transcript.delta' ||
-      event.type === 'response.text.delta'
+      event.type === 'response.audio_transcript.delta'
     ) {
       const delta = this.extractTextDelta(event);
       if (delta) {
@@ -375,11 +380,15 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
       }
     }
 
-    // Handle User Transcript (if sending audio and Aliyun transcribes it)
+    // Handle User Transcript
+    // Some Aliyun versions might use different keys, we try to be exhaustive
     if (
-      event.type === 'conversation.item.input_audio_transcription.delta' &&
+      (event.type === 'conversation.item.input_audio_transcription.delta' || 
+       event.type === 'input_audio_buffer.speech_started' ||
+       event.type === 'input_audio_buffer.transcription.delta') &&
       typeof event.delta === 'string'
     ) {
+      this.logger.log(`[aliyun_user_transcript_delta] "${event.delta}"`);
       this.currentUserText += event.delta;
       if (this.transcriptCallback) {
         this.transcriptCallback({
@@ -391,8 +400,11 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
     }
 
     if (
-      event.type === 'conversation.item.input_audio_transcription.completed'
+      event.type === 'conversation.item.input_audio_transcription.completed' ||
+      event.type === 'input_audio_buffer.speech_stopped' ||
+      event.type === 'input_audio_buffer.transcription.completed'
     ) {
+      this.logger.log(`[aliyun_user_transcript_completed] "${this.currentUserText}"`);
       if (this.transcriptCallback && this.currentUserText) {
         this.transcriptCallback({
           role: 'user',
