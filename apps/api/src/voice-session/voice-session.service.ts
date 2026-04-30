@@ -1,34 +1,42 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { Server as WebSocketServer } from 'ws';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Server as HttpServer } from 'http';
-import { WebSocket } from 'ws';
+import { RawData, WebSocket, WebSocketServer } from 'ws';
+import {
+  ClientToServerMessage,
+  ServerToClientMessage,
+  TranscriptEntry,
+  VoiceSessionState,
+} from '@speaking-coach/shared';
+import { MiniMaxChatProvider } from '../minimax/minimax-chat.provider';
 import { ScenarioService } from '../scenario/scenario.service';
 import { SessionService } from '../session/session.service';
-import { Scenario } from '@speaking-coach/shared';
-import { MiniMaxProvider } from '../minimax/minimax.provider';
+
+type ActiveVoiceSession = {
+  sessionId: string;
+  ws: WebSocket;
+  scenarioId: string;
+  userLevel: 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
+  state: VoiceSessionState;
+  transcript: TranscriptEntry[];
+};
 
 @Injectable()
-export class VoiceSessionService implements OnModuleInit, OnModuleDestroy {
+export class VoiceSessionService implements OnModuleDestroy {
   private readonly logger = new Logger(VoiceSessionService.name);
-  private wss: WebSocketServer;
-  private sessions: Map<string, any> = new Map();
-  private miniMaxProviders: Map<string, MiniMaxProvider> = new Map();
+  private wss?: WebSocketServer;
+  private readonly sessions = new Map<string, ActiveVoiceSession>();
+  private readonly audioStateTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly scenarioService: ScenarioService,
     private readonly sessionService: SessionService,
+    private readonly miniMaxChatProvider: MiniMaxChatProvider,
   ) {}
 
-  onModuleInit() {
-    // WebSocket server will be initialized when HTTP server is ready
-  }
-
   onModuleDestroy() {
-    if (this.wss) {
-      this.wss.close();
-    }
-    // 断开所有 MiniMax 连接
-    this.miniMaxProviders.forEach(provider => provider.disconnect());
+    this.audioStateTimers.forEach((timer) => clearTimeout(timer));
+    this.audioStateTimers.clear();
+    this.wss?.close();
   }
 
   initialize(server: HttpServer) {
@@ -37,239 +45,338 @@ export class VoiceSessionService implements OnModuleInit, OnModuleDestroy {
     server.on('upgrade', (request, socket, head) => {
       const pathname = request.url;
 
-      if (pathname?.startsWith('/ws/voice-sessions/')) {
-        const sessionId = pathname.split('/').pop();
-
-        if (!sessionId) {
-          socket.destroy();
-          return;
-        }
-
-        this.wss.handleUpgrade(request, socket, head, (ws) => {
-          this.wss.emit('connection', ws, request, sessionId);
-        });
-      } else {
+      if (!pathname?.startsWith('/ws/voice-sessions/')) {
         socket.destroy();
+        return;
       }
+
+      const sessionId = pathname.split('/').pop();
+      if (!sessionId) {
+        socket.destroy();
+        return;
+      }
+
+      this.wss?.handleUpgrade(request, socket, head, (ws) => {
+        this.wss?.emit('connection', ws, sessionId);
+      });
     });
 
-    this.wss.on('connection', (ws: WebSocket, request: any, sessionId: string) => {
-      this.handleConnection(ws, sessionId);
+    this.wss.on('connection', (ws: WebSocket, sessionId: string) => {
+      void this.handleConnection(ws, sessionId);
     });
 
-    this.logger.log('WebSocket server initialized on path: /ws/voice-sessions/:sessionId');
+    this.logger.log(
+      'WebSocket server initialized on path: /ws/voice-sessions/:sessionId',
+    );
   }
 
   private async handleConnection(ws: WebSocket, sessionId: string) {
     this.logger.log(`New WebSocket connection for session: ${sessionId}`);
+    const pendingMessages: RawData[] = [];
+    let isReady = false;
 
-    // 验证 session 是否存在
-    const session = await this.sessionService.getSession(sessionId);
-    if (!session) {
-      ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
+    ws.on('message', (data) => {
+      if (!isReady) {
+        pendingMessages.push(data);
+        return;
+      }
+
+      void this.handleMessage(sessionId, data);
+    });
+
+    const practiceSession = await this.sessionService.getSession(sessionId);
+    if (!practiceSession) {
+      this.send(ws, { type: 'error', message: 'Session not found' });
       ws.close();
       return;
     }
 
-    const voiceSession = {
+    const activeSession: ActiveVoiceSession = {
       sessionId,
       ws,
-      scenarioId: session.scenarioId,
-      userLevel: session.userLevel,
+      scenarioId: practiceSession.scenarioId,
+      userLevel: this.normalizeLevel(practiceSession.userLevel),
       state: 'idle',
-      transcript: [],
+      transcript: await this.sessionService.getTranscript(sessionId),
     };
 
-    this.sessions.set(sessionId, voiceSession);
-
-    ws.on('message', async (data) => {
-      await this.handleMessage(sessionId, data);
-    });
+    this.sessions.set(sessionId, activeSession);
+    isReady = true;
 
     ws.on('close', () => {
-      this.handleDisconnect(sessionId);
+      this.clearAudioStateTimer(sessionId);
+      this.sessions.delete(sessionId);
+      this.logger.log(`WebSocket disconnected for session: ${sessionId}`);
     });
 
-    ws.send(JSON.stringify({ type: 'state', state: 'idle' }));
+    this.send(ws, { type: 'state', state: 'idle' });
+    for (const message of pendingMessages) {
+      void this.handleMessage(sessionId, message);
+    }
   }
 
-  private async handleMessage(sessionId: string, data: any) {
+  private async handleMessage(sessionId: string, data: RawData) {
     const session = this.sessions.get(sessionId);
-    if (!session) return;
+    if (!session) {
+      return;
+    }
 
     try {
-      const message = JSON.parse(data.toString());
+      const message = JSON.parse(
+        this.rawDataToString(data),
+      ) as ClientToServerMessage;
 
       switch (message.type) {
         case 'start_session':
           await this.startSession(session, message.scenarioId, message.level);
           break;
-        case 'audio_chunk':
-          await this.handleAudioChunk(sessionId, message.data, message.mimeType);
-          break;
-        case 'end_session':
-          await this.endSession(sessionId);
-          break;
-        case 'hint':
-          await this.sendHint(session);
-          break;
         case 'text_message':
           await this.handleTextMessage(session, message.text);
           break;
-        default:
-          this.logger.warn(`Unknown message type: ${message.type}`);
+        case 'hint':
+          await this.handleHint(session);
+          break;
+        case 'end_session':
+          await this.endSession(session);
+          break;
+        case 'audio_chunk':
+          this.handleAudioChunk(session, message.data, message.mimeType);
+          break;
       }
     } catch (error) {
-      this.logger.error('Error handling message:', error);
-      session.ws.send(JSON.stringify({ type: 'error', message: 'Failed to process message' }));
+      this.logger.error('Error handling WebSocket message', error);
+      this.send(session.ws, {
+        type: 'error',
+        message: 'Failed to process message',
+      });
     }
   }
 
-  private async startSession(session: any, scenarioId: string, level: string) {
+  private async startSession(
+    session: ActiveVoiceSession,
+    scenarioId: string,
+    level: ActiveVoiceSession['userLevel'],
+  ) {
     const scenario = this.scenarioService.getScenarioById(scenarioId);
     if (!scenario) {
-      session.ws.send(JSON.stringify({ type: 'error', message: 'Scenario not found' }));
+      this.send(session.ws, { type: 'error', message: 'Scenario not found' });
       return;
     }
 
-    session.state = 'connecting';
-    session.ws.send(JSON.stringify({ type: 'state', state: 'connecting' }));
+    session.scenarioId = scenarioId;
+    session.userLevel = level;
+    session.state = 'listening';
+    this.send(session.ws, {
+      type: 'session_started',
+      sessionId: session.sessionId,
+    });
+    this.send(session.ws, { type: 'state', state: 'listening' });
 
-    // TODO: 连接 MiniMax Realtime API
-    // 这里创建 MiniMax Provider 并连接
-    try {
-      const miniMax = new MiniMaxProvider(
-        process.env.MINIMAX_API_KEY || '',
-        process.env.MINIMAX_MODEL || 'MiniMax-M2.7'
-      );
-
-      // 监听 MiniMax 返回的音频和文本
-      miniMax.on('audio', (audioData: any) => {
-        session.ws.send(JSON.stringify({
-          type: 'ai_audio',
-          data: audioData.data, // 需要 base64 编码
-          mimeType: audioData.mimeType,
-        }));
-      });
-
-      miniMax.on('transcript', (transcript: any) => {
-        session.ws.send(JSON.stringify({
-          type: 'transcript',
-          role: transcript.role,
-          text: transcript.text,
-          isFinal: transcript.isFinal,
-        }));
-        session.transcript.push(transcript);
-      });
-
-      miniMax.on('error', (error: Error) => {
-        this.logger.error('MiniMax error:', error);
-        session.ws.send(JSON.stringify({ type: 'error', message: 'MiniMax error' }));
-      });
-
-      await miniMax.connect(scenario.systemPrompt, scenario.openingLine);
-
-      this.miniMaxProviders.set(session.sessionId, miniMax);
-
-      session.state = 'listening';
-      session.ws.send(JSON.stringify({ type: 'state', state: 'listening' }));
-      session.ws.send(
-        JSON.stringify({
-          type: 'transcript',
-          role: 'assistant',
-          text: scenario.openingLine,
-          isFinal: true,
-        }),
-      );
-      session.transcript.push({ role: 'assistant', text: scenario.openingLine, isFinal: true });
-    } catch (error) {
-      this.logger.error('Failed to connect to MiniMax:', error);
-      session.ws.send(JSON.stringify({ type: 'error', message: 'Failed to connect to AI' }));
-    }
-  }
-
-  private async handleAudioChunk(sessionId: string, data: string, mimeType: string) {
-    const miniMax = this.miniMaxProviders.get(sessionId);
-    if (!miniMax) {
-      this.logger.warn(`No MiniMax connection for session ${sessionId}`);
-      return;
-    }
-
-    // 将 base64 音频数据转换为 Buffer，然后发送到 MiniMax
-    const audioBuffer = Buffer.from(data, 'base64');
-    miniMax.sendAudio(audioBuffer, mimeType);
-  }
-
-  private async handleTextMessage(session: any, text: string) {
-    session.transcript.push({ role: 'user', text, isFinal: true });
-    session.ws.send(
-      JSON.stringify({
-        type: 'transcript',
-        role: 'user',
-        text,
-        isFinal: true,
-      }),
-    );
-
-    // 发送到 MiniMax（如果支持文本输入）
-    const miniMax = this.miniMaxProviders.get(session.sessionId);
-    if (miniMax) {
-      miniMax.sendText(text);
-    } else {
-      // 简单的回显（用于测试）
-      const response = `You said: ${text}`;
-      session.transcript.push({ role: 'assistant', text: response, isFinal: true });
-      session.ws.send(
-        JSON.stringify({
-          type: 'transcript',
-          role: 'assistant',
-          text: response,
-          isFinal: true,
-        }),
-      );
-    }
-  }
-
-  private async sendHint(session: any) {
-    session.ws.send(
-      JSON.stringify({
-        type: 'transcript',
+    if (session.transcript.length === 0) {
+      await this.appendTranscript(session, {
         role: 'assistant',
-        text: 'Hint: Try to answer naturally and keep it simple.',
+        text: scenario.openingLine,
         isFinal: true,
-      }),
-    );
+      });
+    }
   }
 
-  private async endSession(sessionId: string) {
-    const session = this.sessions.get(sessionId);
-    if (!session) return;
+  private async handleTextMessage(session: ActiveVoiceSession, text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
 
+    await this.appendTranscript(session, {
+      role: 'user',
+      text: trimmed,
+      isFinal: true,
+    });
+
+    const scenario = this.scenarioService.getScenarioById(session.scenarioId);
+    session.state = 'thinking';
+    this.send(session.ws, { type: 'state', state: 'thinking' });
+
+    const assistantText = await this.miniMaxChatProvider.createChatCompletion([
+      {
+        role: 'system',
+        content:
+          scenario?.systemPrompt ??
+          'You are a friendly English speaking partner. Keep replies short.',
+      },
+      ...session.transcript.map((entry) => ({
+        role: entry.role,
+        content: entry.text,
+      })),
+    ]);
+
+    session.state = 'ai_speaking';
+    this.send(session.ws, { type: 'state', state: 'ai_speaking' });
+    await this.appendTranscript(session, {
+      role: 'assistant',
+      text: assistantText,
+      isFinal: true,
+    });
+
+    session.state = 'listening';
+    this.send(session.ws, { type: 'state', state: 'listening' });
+  }
+
+  private async handleHint(session: ActiveVoiceSession) {
+    const scenario = this.scenarioService.getScenarioById(session.scenarioId);
+    const hint = scenario?.targetExpressions[0]
+      ? `Hint: Try this expression: "${scenario.targetExpressions[0]}"`
+      : 'Hint: Try one short sentence first.';
+
+    await this.appendTranscript(session, {
+      role: 'assistant',
+      text: hint,
+      isFinal: true,
+    });
+  }
+
+  private async endSession(session: ActiveVoiceSession) {
+    this.clearAudioStateTimer(session.sessionId);
     session.state = 'ended';
-    session.ws.send(JSON.stringify({ type: 'state', state: 'ended' }));
-
-    // 断开 MiniMax 连接
-    const miniMax = this.miniMaxProviders.get(sessionId);
-    if (miniMax) {
-      await miniMax.disconnect();
-      this.miniMaxProviders.delete(sessionId);
-    }
-
-    // 保存 transcript 到数据库
-    await this.sessionService.endSession(sessionId, session.transcript, null);
-
+    this.send(session.ws, { type: 'state', state: 'ended' });
+    await this.sessionService.endSession(
+      session.sessionId,
+      session.transcript,
+      null,
+    );
     session.ws.close();
-    this.sessions.delete(sessionId);
+    this.sessions.delete(session.sessionId);
   }
 
-  private handleDisconnect(sessionId: string) {
-    this.logger.log(`WebSocket disconnected for session: ${sessionId}`);
-    // 清理 MiniMax 连接
-    const miniMax = this.miniMaxProviders.get(sessionId);
-    if (miniMax) {
-      miniMax.disconnect();
-      this.miniMaxProviders.delete(sessionId);
+  private handleAudioChunk(
+    session: ActiveVoiceSession,
+    data: string,
+    mimeType: string,
+  ) {
+    const decoded = this.decodeAudioChunk(data);
+    if (!decoded) {
+      this.logger.warn(
+        `[audio_chunk] invalid session=${session.sessionId} mimeType=${mimeType} timestamp=${new Date().toISOString()}`,
+      );
+      session.state = 'error';
+      this.send(session.ws, {
+        type: 'state',
+        state: 'error',
+      });
+      this.send(session.ws, {
+        type: 'error',
+        message: 'Invalid audio chunk',
+      });
+      return;
     }
-    this.sessions.delete(sessionId);
+
+    session.state = 'user_speaking';
+    this.send(session.ws, { type: 'state', state: 'user_speaking' });
+    this.logger.log(
+      `[audio_chunk] session=${session.sessionId} mimeType=${mimeType} size=${decoded.length} bytes timestamp=${new Date().toISOString()}`,
+    );
+    this.scheduleAudioIdleState(session);
+  }
+
+  private async appendTranscript(
+    session: ActiveVoiceSession,
+    entry: TranscriptEntry,
+  ) {
+    session.transcript.push(entry);
+    await this.sessionService.addMessage(
+      session.sessionId,
+      entry.role,
+      entry.text,
+      entry.isFinal,
+    );
+    this.send(session.ws, {
+      type: 'transcript',
+      role: entry.role,
+      text: entry.text,
+      isFinal: entry.isFinal,
+    });
+  }
+
+  private send(ws: WebSocket, message: ServerToClientMessage) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    }
+  }
+
+  private rawDataToString(data: RawData): string {
+    if (typeof data === 'string') {
+      return data;
+    }
+
+    if (Buffer.isBuffer(data)) {
+      return data.toString('utf8');
+    }
+
+    if (Array.isArray(data)) {
+      return Buffer.concat(data).toString('utf8');
+    }
+
+    return Buffer.from(data).toString('utf8');
+  }
+
+  private decodeAudioChunk(data: string): Buffer | null {
+    const normalized = data.trim();
+
+    if (!normalized || !/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) {
+      return null;
+    }
+
+    try {
+      const decoded = Buffer.from(normalized, 'base64');
+      return decoded.length > 0 ? decoded : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private scheduleAudioIdleState(session: ActiveVoiceSession) {
+    this.clearAudioStateTimer(session.sessionId);
+
+    const timer = setTimeout(() => {
+      if (!this.sessions.has(session.sessionId) || session.state === 'ended') {
+        return;
+      }
+
+      session.state = 'thinking';
+      this.send(session.ws, { type: 'state', state: 'thinking' });
+
+      const listeningTimer = setTimeout(() => {
+        if (
+          !this.sessions.has(session.sessionId) ||
+          session.state === 'ended'
+        ) {
+          return;
+        }
+
+        session.state = 'listening';
+        this.send(session.ws, { type: 'state', state: 'listening' });
+        this.audioStateTimers.delete(session.sessionId);
+      }, 300);
+
+      this.audioStateTimers.set(session.sessionId, listeningTimer);
+    }, 900);
+
+    this.audioStateTimers.set(session.sessionId, timer);
+  }
+
+  private clearAudioStateTimer(sessionId: string) {
+    const timer = this.audioStateTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.audioStateTimers.delete(sessionId);
+    }
+  }
+
+  private normalizeLevel(level: string): ActiveVoiceSession['userLevel'] {
+    if (['A1', 'A2', 'B1', 'B2', 'C1'].includes(level)) {
+      return level as ActiveVoiceSession['userLevel'];
+    }
+
+    return 'A2';
   }
 }

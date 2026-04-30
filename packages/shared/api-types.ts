@@ -1,6 +1,8 @@
+import type { PracticeReport, Scenario } from './types';
+
 export interface CreateSessionRequest {
   scenarioId: string;
-  level: string;
+  level: Scenario['level'];
 }
 
 export interface CreateSessionResponse {
@@ -36,6 +38,9 @@ export interface MessageData {
 
 export interface PracticeReportData {
   overallScore: number;
+  fluencyScore?: number;
+  grammarScore?: number;
+  vocabularyScore?: number;
   summaryZh: string;
   topMistakes: Array<{
     original: string;
@@ -45,3 +50,5 @@ export interface PracticeReportData {
   recommendedExpressions: string[];
   nextPracticeSuggestion: string;
 }
+
+export type GetReportResponse = PracticeReport;

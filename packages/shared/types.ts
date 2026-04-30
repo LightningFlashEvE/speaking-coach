@@ -107,6 +107,9 @@ export type Message = {
 // 练习报告类型
 export type PracticeReport = {
   overallScore: number;
+  fluencyScore?: number;
+  grammarScore?: number;
+  vocabularyScore?: number;
   summaryZh: string;
   topMistakes: Array<{
     original: string;

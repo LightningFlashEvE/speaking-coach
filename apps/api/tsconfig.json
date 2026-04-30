@@ -22,7 +22,7 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@speaking-coach/shared": ["../../packages/shared/dist/index.js"]
+      "@speaking-coach/shared": ["../../packages/shared/index.ts"]
     }
   }
 }
