@@ -5,6 +5,7 @@ import { SessionModule } from './session/session.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { VoiceSessionModule } from './voice-session/voice-session.module';
 import { ReportModule } from './report/report.module';
+import { AliyunModule } from './aliyun/aliyun.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ReportModule } from './report/report.module';
     PrismaModule,
     VoiceSessionModule,
     ReportModule,
+    AliyunModule,
   ],
 })
 export class AppModule {}

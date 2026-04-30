@@ -10,6 +10,8 @@ import {
 import { MiniMaxChatProvider } from '../minimax/minimax-chat.provider';
 import { ScenarioService } from '../scenario/scenario.service';
 import { SessionService } from '../session/session.service';
+import { AliyunBailianRealtimeProvider } from '../aliyun/aliyun-bailian-realtime.provider';
+import { RealtimeVoiceProvider } from '@speaking-coach/shared';
 
 type ActiveVoiceSession = {
   sessionId: string;
@@ -18,6 +20,7 @@ type ActiveVoiceSession = {
   userLevel: 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
   state: VoiceSessionState;
   transcript: TranscriptEntry[];
+  realtimeProvider?: RealtimeVoiceProvider;
 };
 
 @Injectable()
@@ -179,6 +182,58 @@ export class VoiceSessionService implements OnModuleDestroy {
         isFinal: true,
       });
     }
+
+    if (process.env.VOICE_MODE === 'realtime_voice') {
+      try {
+        const provider = new AliyunBailianRealtimeProvider();
+        session.realtimeProvider = provider;
+
+        provider.onAudio((audio, mimeType) => {
+          this.send(session.ws, {
+            type: 'ai_audio',
+            data: audio.toString('base64'),
+            mimeType,
+          });
+        });
+
+        provider.onTranscript((msg) => {
+          if (msg.isFinal) {
+            void this.appendTranscript(session, msg).then(() => {
+              if (msg.role === 'assistant') {
+                session.state = 'listening';
+                this.send(session.ws, { type: 'state', state: 'listening' });
+              }
+            });
+          }
+        });
+
+        provider.onError((err) => {
+          this.logger.error(
+            `RealtimeProvider error for session ${session.sessionId}:`,
+            err,
+          );
+        });
+
+        await provider.connect({
+          scenarioPrompt: scenario.systemPrompt,
+          openingLine: scenario.openingLine,
+          userLevel: level,
+        });
+
+        this.logger.log(
+          `Realtime provider connected for session ${session.sessionId}`,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Failed to connect realtime provider for session ${session.sessionId}`,
+          err,
+        );
+        this.send(session.ws, {
+          type: 'error',
+          message: 'Voice connection failed',
+        });
+      }
+    }
   }
 
   private async handleTextMessage(session: ActiveVoiceSession, text: string) {
@@ -237,6 +292,9 @@ export class VoiceSessionService implements OnModuleDestroy {
 
   private async endSession(session: ActiveVoiceSession) {
     this.clearAudioStateTimer(session.sessionId);
+    if (session.realtimeProvider) {
+      await session.realtimeProvider.close();
+    }
     session.state = 'ended';
     this.send(session.ws, { type: 'state', state: 'ended' });
     await this.sessionService.endSession(
@@ -275,7 +333,12 @@ export class VoiceSessionService implements OnModuleDestroy {
     this.logger.log(
       `[audio_chunk] session=${session.sessionId} mimeType=${mimeType} size=${decoded.length} bytes timestamp=${new Date().toISOString()}`,
     );
-    this.scheduleAudioIdleState(session);
+
+    if (session.realtimeProvider) {
+      session.realtimeProvider.sendAudio(decoded, mimeType);
+    } else {
+      this.scheduleAudioIdleState(session);
+    }
   }
 
   private async appendTranscript(

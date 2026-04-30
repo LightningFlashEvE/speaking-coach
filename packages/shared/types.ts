@@ -119,3 +119,33 @@ export type PracticeReport = {
   recommendedExpressions: string[];
   nextPracticeSuggestion: string;
 };
+
+// ──────────────────────────────────────────────
+// Realtime Voice Provider interface
+// All realtime voice providers (Aliyun Bailian, etc.) must implement this.
+// ──────────────────────────────────────────────
+export interface RealtimeVoiceProvider {
+  connect(options: {
+    scenarioPrompt: string;
+    openingLine: string;
+    userLevel: string;
+  }): Promise<void>;
+
+  sendAudio(data: Buffer, mimeType?: string): void;
+
+  sendText?(text: string): void;
+
+  onAudio(callback: (audio: Buffer, mimeType: string) => void): void;
+
+  onTranscript(
+    callback: (message: {
+      role: "user" | "assistant";
+      text: string;
+      isFinal: boolean;
+    }) => void,
+  ): void;
+
+  onError(callback: (error: Error) => void): void;
+
+  close(): Promise<void>;
+}

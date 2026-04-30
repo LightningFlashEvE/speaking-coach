@@ -1,0 +1,327 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Colors - Brand & Accent */
+  --color-primary: #0a0a0a;
+  --color-primary-active: #1f1f1f;
+  --color-primary-disabled: #e5e5e5;
+  --color-brand-pink: #ff4d8b;
+  --color-brand-teal: #1a3a3a;
+  --color-brand-lavender: #b8a4ed;
+  --color-brand-peach: #ffb084;
+  --color-brand-ochre: #e8b94a;
+  --color-brand-mint: #a4d4c5;
+  --color-brand-coral: #ff6b5a;
+
+  /* Colors - Surface */
+  --color-canvas: #fffaf0;
+  --color-surface-soft: #faf5e8;
+  --color-surface-card: #f5f0e0;
+  --color-surface-strong: #ebe6d6;
+  --color-surface-dark: #0a1a1a;
+  --color-surface-dark-elevated: #1a2a2a;
+  --color-hairline: #e5e5e5;
+  --color-hairline-soft: #f0f0f0;
+
+  /* Colors - Text */
+  --color-ink: #0a0a0a;
+  --color-body: #3a3a3a;
+  --color-body-strong: #1a1a1a;
+  --color-muted: #6a6a6a;
+  --color-muted-soft: #9a9a9a;
+  --color-on-primary: #ffffff;
+  --color-on-dark: #ffffff;
+  --color-on-dark-soft: #a0a0a0;
+
+  /* Colors - Semantic */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+
+  /* Typography - Display */
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --text-display-xl: 72px;
+  --text-display-lg: 56px;
+  --text-display-md: 40px;
+  --text-display-sm: 32px;
+
+  /* Typography - Title */
+  --text-title-lg: 24px;
+  --text-title-md: 18px;
+  --text-title-sm: 16px;
+
+  /* Typography - Body */
+  --text-body-md: 16px;
+  --text-body-sm: 14px;
+  --text-caption: 13px;
+  --text-caption-uppercase: 12px;
+  --text-button: 14px;
+  --text-nav-link: 14px;
+
+  /* Rounded */
+  --rounded-xs: 6px;
+  --rounded-sm: 8px;
+  --rounded-md: 12px;
+  --rounded-lg: 16px;
+  --rounded-xl: 24px;
+  --rounded-pill: 9999px;
+
+  /* Spacing */
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+  --spacing-section: 96px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-body);
+  font-family: var(--font-display);
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+/* Typography Classes */
+.text-display-xl {
+  font-size: var(--text-display-xl);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -2.5px;
+}
+
+.text-display-lg {
+  font-size: var(--text-display-lg);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -2px;
+}
+
+.text-display-md {
+  font-size: var(--text-display-md);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+
+.text-display-sm {
+  font-size: var(--text-display-sm);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+}
+
+.text-title-lg {
+  font-size: var(--text-title-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.3px;
+}
+
+.text-title-md {
+  font-size: var(--text-title-md);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+.text-title-sm {
+  font-size: var(--text-title-sm);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+.text-body-md {
+  font-size: var(--text-body-md);
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+.text-body-sm {
+  font-size: var(--text-body-sm);
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+.text-caption {
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+.text-caption-uppercase {
+  font-size: var(--text-caption-uppercase);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 1.5px;
+}
+
+.text-button {
+  font-size: var(--text-button);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+/* Component Classes */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: var(--text-button);
+  font-weight: 600;
+  line-height: 1;
+  padding: 12px 20px;
+  height: 44px;
+  border-radius: var(--rounded-md);
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-active);
+}
+
+.btn-primary:disabled {
+  background-color: var(--color-primary-disabled);
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: var(--text-button);
+  font-weight: 600;
+  line-height: 1;
+  padding: 12px 20px;
+  height: 44px;
+  border-radius: var(--rounded-md);
+  border: 1px solid var(--color-hairline);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-on-color {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: var(--text-button);
+  font-weight: 600;
+  line-height: 1;
+  padding: 12px 20px;
+  height: 44px;
+  border-radius: var(--rounded-md);
+  border: none;
+  cursor: pointer;
+}
+
+.btn-text-link {
+  background-color: transparent;
+  color: var(--color-ink);
+  font-size: var(--text-button);
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+}
+
+.text-input {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: var(--text-body-md);
+  font-weight: 400;
+  padding: 12px 16px;
+  height: 44px;
+  border-radius: var(--rounded-md);
+  border: 1px solid var(--color-hairline);
+  outline: none;
+}
+
+.text-input:focus {
+  border-color: var(--color-ink);
+}
+
+.feature-card {
+  border-radius: var(--rounded-xl);
+  padding: var(--spacing-xl);
+}
+
+.feature-card-pink {
+  background-color: var(--color-brand-pink);
+  color: var(--color-on-primary);
+}
+
+.feature-card-teal {
+  background-color: var(--color-brand-teal);
+  color: var(--color-on-dark);
+}
+
+.feature-card-lavender {
+  background-color: var(--color-brand-lavender);
+  color: var(--color-ink);
+}
+
+.feature-card-peach {
+  background-color: var(--color-brand-peach);
+  color: var(--color-ink);
+}
+
+.feature-card-ochre {
+  background-color: var(--color-brand-ochre);
+  color: var(--color-ink);
+}
+
+.feature-card-cream {
+  background-color: var(--color-surface-card);
+  color: var(--color-ink);
+}
+
+.content-card {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  border-radius: var(--rounded-lg);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-hairline);
+}
+
+.badge-pill {
+  background-color: var(--color-surface-card);
+  color: var(--color-ink);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: var(--rounded-pill);
+}
+
+.top-nav {
+  background-color: var(--color-canvas);
+  height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-lg);
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.footer {
+  background-color: var(--color-surface-soft);
+  color: var(--color-body);
+  font-size: var(--text-body-sm);
+  padding: var(--spacing-section) var(--spacing-lg);
+}
