@@ -6,10 +6,11 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "dev": "ts-node -r tsconfig-paths/register src/main.ts",
     "start": "node dist/main.js",
-    "start:dev": "nest start --watch",
+    "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "realtime:test": "ts-node -r tsconfig-paths/register src/minimax/realtime-test.ts",

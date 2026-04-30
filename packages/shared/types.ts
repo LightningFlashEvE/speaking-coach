@@ -25,6 +25,9 @@ export type ClientToServerMessage =
       type: "end_session";
     }
   | {
+      type: "commit_audio";
+    }
+  | {
       type: "hint";
     }
   | {
@@ -132,6 +135,9 @@ export interface RealtimeVoiceProvider {
   }): Promise<void>;
 
   sendAudio(data: Uint8Array): void;
+
+  /** Send a manual commit to signal the end of user audio turn */
+  commit?(): void;
 
   sendText?(text: string): void;
 

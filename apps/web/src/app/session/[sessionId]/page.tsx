@@ -38,6 +38,7 @@ export default function SessionPage() {
     sendTextMessage,
     sendPcmChunk,
     requestHint,
+    commitAudio,
     endSession,
     close,
   } = useVoiceSession(sessionId);
@@ -101,6 +102,7 @@ export default function SessionPage() {
   async function handleToggleRecording() {
     if (isRecording) {
       stopRecording();
+      commitAudio();
       return;
     }
 

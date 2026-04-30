@@ -243,7 +243,8 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
             input_audio_format: process.env.ALIYUN_AUDIO_INPUT_FORMAT ?? 'pcm',
             output_audio_format:
               process.env.ALIYUN_AUDIO_OUTPUT_FORMAT ?? 'mp3',
-            turn_detection: null, // manual VAD
+            turn_detection: { type: 'server_vad' }, // Use server VAD for real-time feel
+            input_audio_transcription: { model: 'whisper-1' },
           },
         });
 
@@ -274,12 +275,10 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
       type: 'input_audio_buffer.append',
       audio: Buffer.from(data).toString('base64'),
     });
+  }
 
-    // For manual mode, we also need to trigger commit and response manually after user stops speaking.
-    // However, since we receive discrete chunks, the client usually sends `end_session` or we need a way
-    // to know when the chunk ends. If the client sends discrete chunks and expects an immediate response,
-    // we can commit immediately. Let's assume each sendAudio is a complete chunk for MVP,
-    // or we expose a commit method. For DashScope, if turn_detection is null, we must send commit.
+  commit(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     this.sendJson(this.ws, {
       type: 'input_audio_buffer.commit',
     });
@@ -337,8 +336,8 @@ export class AliyunBailianRealtimeProvider implements RealtimeVoiceProvider {
       event.type === 'response.audio.delta' &&
       typeof event.delta === 'string'
     ) {
+      this.logger.log(`[aliyun_audio_delta] size=${event.delta.length}`);
       if (this.audioCallback) {
-        // Aliyun output defaults to mp3 or pcm based on session config
         const mimeType =
           process.env.ALIYUN_AUDIO_OUTPUT_FORMAT === 'pcm'
             ? 'audio/pcm'

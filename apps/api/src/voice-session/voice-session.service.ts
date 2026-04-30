@@ -139,6 +139,9 @@ export class VoiceSessionService implements OnModuleDestroy {
         case 'hint':
           await this.handleHint(session);
           break;
+        case 'commit_audio':
+          this.handleCommitAudio(session);
+          break;
         case 'end_session':
           await this.endSession(session);
           break;
@@ -203,6 +206,14 @@ export class VoiceSessionService implements OnModuleDestroy {
                 session.state = 'listening';
                 this.send(session.ws, { type: 'state', state: 'listening' });
               }
+            });
+          } else {
+            // Forward partial transcripts to frontend for live preview
+            this.send(session.ws, {
+              type: 'transcript',
+              role: msg.role,
+              text: msg.text,
+              isFinal: false,
             });
           }
         });
@@ -338,6 +349,13 @@ export class VoiceSessionService implements OnModuleDestroy {
       session.realtimeProvider.sendAudio(decoded);
     } else {
       this.scheduleAudioIdleState(session);
+    }
+  }
+
+  private handleCommitAudio(session: ActiveVoiceSession) {
+    if (session.realtimeProvider?.commit) {
+      this.logger.log(`[commit_audio] session=${session.sessionId}`);
+      session.realtimeProvider.commit();
     }
   }
 
