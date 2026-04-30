@@ -197,3 +197,7 @@ export function getScenarioById(id: string): Scenario | undefined {
 export function getScenariosByLevel(level: string): Scenario[] {
   return scenarios.filter(s => s.level === level);
 }
+
+export function getScenarios(): Scenario[] {
+  return scenarios;
+}

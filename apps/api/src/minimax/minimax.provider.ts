@@ -1,64 +1,117 @@
 import { EventEmitter } from 'events';
+import Anthropic from '@anthropic-ai/sdk';
 
-export interface MiniMaxMessage {
-  type: string;
-  [key: string]: any;
+export interface MiniMaxTranscript {
+  role: 'user' | 'assistant';
+  text: string;
+  isFinal: boolean;
 }
 
 export class MiniMaxProvider extends EventEmitter {
-  private ws: any = null;
+  private client: Anthropic | null = null;
+  private messages: Anthropic.MessageParam[] = [];
   private isConnected = false;
+  private model = 'MiniMax-M2.7';
 
-  constructor(private readonly apiKey: string, private readonly model: string) {
+  constructor(
+    private readonly apiKey: string,
+    model?: string,
+  ) {
     super();
+    if (model) {
+      this.model = model;
+    }
   }
 
-  async connect(scenarioPrompt: string, openingLine: string): Promise<void> {
-    // MiniMax Realtime API WebSocket URL
-    const url = `wss://api.minimax.chat/ws/v1/realtime?model=${this.model}`;
-
-    // 注意：MiniMax 可能需要不同的鉴权方式
-    // 这里只是框架，实际需要参考 MiniMax 文档
+  async connect(systemPrompt: string, openingLine: string): Promise<void> {
     try {
-      // 实际实现需要：
-      // 1. 创建 WebSocket 连接到 MiniMax
-      // 2. 发送初始化消息（包含 system prompt、场景信息等）
-      // 3. 监听消息（audio、transcript 等）
-      // 4. 处理错误和重连
+      this.client = new Anthropic({
+        apiKey: this.apiKey,
+        baseURL: 'https://api.minimaxi.com/anthropic',
+      });
+
+      this.messages = [
+        { role: 'user', content: systemPrompt },
+      ];
 
       this.isConnected = true;
       this.emit('connected');
+
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [],
+      });
+
+      const text = this.extractText(response);
+      if (text) {
+        this.emit('transcript', { role: 'assistant', text, isFinal: true } as MiniMaxTranscript);
+      }
     } catch (error) {
       this.emit('error', error);
+      throw error;
     }
   }
 
-  sendAudio(audioData: Buffer, mimeType: string = 'audio/webm;codecs=opus'): void {
-    if (!this.isConnected) {
+  async sendText(text: string): Promise<void> {
+    if (!this.client || !this.isConnected) {
       throw new Error('Not connected to MiniMax');
     }
 
-    // 发送音频数据到 MiniMax
-    // 需要将音频数据转换为 MiniMax 要求的格式
-    // 可能是 base64 编码或者其他格式
-  }
+    try {
+      this.messages.push({ role: 'user', content: text });
 
-  sendText(text: string): void {
-    if (!this.isConnected) {
-      throw new Error('Not connected to MiniMax');
-    }
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 1024,
+        messages: this.messages,
+        stream: true,
+      });
 
-    // 发送文本消息到 MiniMax
-  }
-
-  disconnect(): Promise<void> {
-    return new Promise((resolve) => {
-      if (this.ws) {
-        this.ws.close();
-        this.ws = null;
+      let fullText = '';
+      for await (const chunk of response) {
+        const text = this.extractTextFromChunk(chunk);
+        if (text) {
+          fullText += text;
+          this.emit('transcript', { role: 'assistant', text: fullText, isFinal: false } as MiniMaxTranscript);
+        }
       }
-      this.isConnected = false;
-      resolve();
-    });
+
+      this.messages.push({ role: 'assistant', content: fullText });
+
+      this.emit('transcript', { role: 'assistant', text: fullText, isFinal: true } as MiniMaxTranscript);
+    } catch (error) {
+      this.emit('error', error);
+      throw error;
+    }
+  }
+
+  sendAudio(audioData: Buffer, mimeType: string): void {
+    if (!this.isConnected) {
+      throw new Error('Not connected to MiniMax');
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    this.isConnected = false;
+    this.client = null;
+    this.messages = [];
+  }
+
+  private extractText(response: Anthropic.Message): string {
+    const textBlocks = response.content.filter(
+      (block): block is Anthropic.TextBlock => block.type === 'text'
+    );
+    return textBlocks.map(b => b.text).join('');
+  }
+
+  private extractTextFromChunk(chunk: Anthropic.MessageStreamEvent): string {
+    if (chunk.type === 'content_block_delta') {
+      if (chunk.delta.type === 'text_delta') {
+        return chunk.delta.text;
+      }
+    }
+    return '';
   }
 }
