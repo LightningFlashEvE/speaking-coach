@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model PracticeSession {
+  id             String    @id @default(cuid())
+  scenarioId     String
+  userLevel      String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  transcriptJson Json?
+  reportJson     Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  messages Message[]
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String
+  text      String
+  isFinal   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  session   PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}

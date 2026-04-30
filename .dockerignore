@@ -1,0 +1,12 @@
+# Docker 忽略文件
+node_modules
+dist
+*.db
+*.db-journal
+.env
+.next
+.git
+.gitignore
+*.md
+test/
+coverage/

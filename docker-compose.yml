@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "7539:7539"
+    environment:
+      - PORT=7539
+      - DATABASE_URL=file:/app/apps/api/dev.db
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+    volumes:
+      - ./apps/api/dev.db:/app/apps/api/dev.db
+    restart: unless-stopped
+
+  # 前端服务
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:7539
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # 可选：数据库服务（生产环境使用 PostgreSQL）
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     - POSTGRES_USER=user
+  #     - POSTGRES_PASSWORD=password
+  #     - POSTGRES_DB=speaking_coach
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+# volumes:
+#   postgres_data:
